@@ -3,6 +3,7 @@ import { spawn } from 'child_process';
 import { createServer } from './server/server.js';
 import { SessionManager } from './server/session-manager.js';
 import { RelayConfig } from './server/types.js';
+import { StderrParser } from './stderr/index.js';
 import type { Server } from 'http';
 
 function parseCliArgs(argv: string[]): { args: Record<string, string>; subcommand: string | null; userCommand: string[] } {
@@ -103,20 +104,30 @@ async function runWithApp(config: RelayConfig, userCommand: string[]): Promise<v
 
   const [cmd, ...cmdArgs] = userCommand;
 
+  const relayUrl = `http://localhost:${config.port}`;
+  const stderrParser = new StderrParser(relayUrl);
+
   console.log(`[DevSonar] Starting: ${userCommand.join(' ')}`);
   console.log(`[DevSonar] Auto-instrumentation enabled`);
+  console.log(`[DevSonar] stderr monitoring enabled (Python, Go, Ruby, Java, Rust)`);
 
   const child = spawn(cmd, cmdArgs, {
-    stdio: 'inherit',
+    stdio: ['inherit', 'inherit', 'pipe'],
     env: {
       ...process.env,
       NODE_OPTIONS: nodeOptions,
-      DEVSONAR_URL: `http://localhost:${config.port}`,
+      DEVSONAR_URL: relayUrl,
     },
     shell: true,
   });
 
+  child.stderr!.on('data', (chunk: Buffer) => {
+    process.stderr.write(chunk);
+    stderrParser.feed(chunk);
+  });
+
   child.on('exit', (code) => {
+    stderrParser.flush();
     process.exit(code ?? 0);
   });
 

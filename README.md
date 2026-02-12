@@ -5,9 +5,12 @@ AI-powered runtime error monitoring for local development. Automatically capture
 ## Architecture
 
 ```
-Your Application (Node.js / Browser)
+Your Application (Any Language)
   |
-  |  Errors captured automatically
+  ├── [Node.js] --import hook (auto)
+  ├── [Python/Go] Language reporter (SDK)
+  ├── [Any] stderr monitoring (auto)
+  |
   |  POST /errors
   v
 DevSonar Relay Server (port 9100)
@@ -39,6 +42,121 @@ npm install @devsonar/error-reporter
 - **Node.js** >= 18.0.0
 - **Claude Code CLI** (`claude` command available) — required for the relay server
 
+## Quick Start (Turborepo Monorepo)
+
+DevSonar is designed to work with Turborepo monorepos where backend and frontend apps coexist. Below is a typical setup.
+
+### Project Structure
+
+```
+my-app/
+├── package.json          # root workspace
+├── turbo.json
+└── apps/
+    ├── backend/
+    │   ├── package.json  # devsonar as dependency
+    │   └── src/
+    │       └── index.ts
+    └── frontend/
+        ├── package.json  # devsonar as dependency
+        └── src/
+            └── main.ts   # or static HTML
+```
+
+### 1. Root `package.json`
+
+```json
+{
+  "private": true,
+  "workspaces": ["apps/*"],
+  "devDependencies": {
+    "turbo": "^2"
+  },
+  "scripts": {
+    "dev": "turbo dev"
+  }
+}
+```
+
+### 2. Backend Setup
+
+Install `devsonar` in the backend app and use the CLI to wrap your server process:
+
+```bash
+cd apps/backend
+npm install devsonar
+```
+
+```json
+{
+  "scripts": {
+    "dev": "devsonar run -- tsx watch src/index.ts"
+  }
+}
+```
+
+`devsonar run` starts the relay server (port 9100) and injects error monitoring into the child process via `node --import`. It also monitors stderr for error patterns from Python, Go, Ruby, Java, and Rust. No code changes needed — all `uncaughtException` and `unhandledRejection` errors are captured automatically.
+
+### 3. Frontend Setup
+
+Install `devsonar` in the frontend app and import it at your entry point:
+
+```bash
+cd apps/frontend
+npm install devsonar
+```
+
+#### With a Bundler (Vite, webpack, etc.)
+
+```typescript
+// src/main.ts or src/index.ts
+import 'devsonar';
+```
+
+#### Static HTML (no bundler)
+
+Serve the DevSonar dist files from your backend and import via `<script type="module">`:
+
+```typescript
+// Backend: serve devsonar dist as static files
+import { resolve } from 'path';
+app.use('/devsonar', express.static(resolve('node_modules/devsonar/dist')));
+```
+
+```html
+<!-- Frontend: index.html -->
+<script type="module">
+  import '/devsonar/index.js';
+</script>
+```
+
+On import, DevSonar automatically sets up:
+- `window.error` and `unhandledrejection` listeners
+- `fetch` wrapper that reports HTTP 4xx/5xx errors to the relay server
+
+### 4. Turborepo Config
+
+```json
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "dev": {
+      "persistent": true,
+      "cache": false
+    }
+  }
+}
+```
+
+### 5. Run
+
+```bash
+npm install
+npm run dev
+```
+
+The backend starts with DevSonar monitoring. Errors from both the backend (Node.js) and frontend (browser) are sent to the relay server on port 9100, where Claude analyzes them and suggests fixes.
+
 ## Usage
 
 ### Option 1: CLI Auto-Instrumentation (Recommended)
@@ -59,7 +177,16 @@ Use it in your `package.json`:
 }
 ```
 
-No code changes needed in your application. DevSonar starts a relay server and injects error monitoring into the child process via `node --import`.
+No code changes needed in your application. DevSonar starts a relay server and injects error monitoring into the child process via `node --import`. For non-Node.js processes, stderr is automatically monitored for error patterns.
+
+```bash
+# Works with any language
+npx devsonar run -- python app.py
+npx devsonar run -- go run main.go
+npx devsonar run -- ruby app.rb
+npx devsonar run -- java -jar app.jar
+npx devsonar run -- cargo run
+```
 
 ### Option 2: Import `devsonar`
 
@@ -216,6 +343,123 @@ Force flush buffered errors immediately.
 { "flushed": 3 }
 ```
 
+## Multi-Language Support
+
+DevSonar supports error capture from multiple languages through two mechanisms:
+
+### Supported Languages
+
+| Language | stderr Monitoring | Language Reporter |
+|---|---|---|
+| Node.js | — (uses `--import` hook) | Built-in |
+| Python | Traceback detection | `devsonar` (pip) |
+| Go | Panic detection | `devsonar-go` (Go module) |
+| Ruby | Error pattern detection | — |
+| Java | Exception/Error detection | — |
+| Rust | Panic detection | — |
+
+### stderr Monitoring (Automatic)
+
+`devsonar run` automatically monitors stderr output from any child process and detects error patterns for Python, Go, Ruby, Java, and Rust. No configuration needed.
+
+```bash
+devsonar run -- python app.py     # Detects Python tracebacks
+devsonar run -- go run main.go    # Detects Go panics
+devsonar run -- ruby app.rb       # Detects Ruby errors
+devsonar run -- java -jar app.jar # Detects Java exceptions
+devsonar run -- cargo run         # Detects Rust panics
+```
+
+### Python Reporter
+
+For richer error capture in Python applications (e.g., caught exceptions, framework integration), install the Python reporter:
+
+```bash
+pip install devsonar
+```
+
+#### Basic Usage
+
+```python
+import devsonar
+devsonar.init()  # Hooks sys.excepthook for automatic capture
+```
+
+#### Manual Reporting
+
+```python
+import devsonar
+
+devsonar.init()
+
+try:
+    risky_operation()
+except Exception as e:
+    devsonar.report_error(str(e), source="my-module")
+```
+
+#### Django
+
+```python
+# settings.py
+MIDDLEWARE = [
+    "devsonar.middleware.django.DevSonarMiddleware",
+    # ... other middleware
+]
+```
+
+#### Flask
+
+```python
+from flask import Flask
+from devsonar.middleware.flask import init_devsonar
+
+app = Flask(__name__)
+init_devsonar(app)
+```
+
+### Go Reporter
+
+For richer error capture in Go applications (e.g., recovered panics, HTTP middleware), install the Go reporter:
+
+```bash
+go get github.com/taro-hirose/devsonar-go
+```
+
+#### Basic Usage
+
+```go
+package main
+
+import devsonar "github.com/taro-hirose/devsonar-go"
+
+func main() {
+    reporter := devsonar.New()
+    defer devsonar.RecoverAndReport(reporter, "main")
+
+    // your application code
+}
+```
+
+#### Error Reporting
+
+```go
+reporter := devsonar.New()
+
+if err := riskyOperation(); err != nil {
+    reporter.ReportError(err, "my-module")
+}
+```
+
+#### HTTP Middleware
+
+```go
+mux := http.NewServeMux()
+reporter := devsonar.New()
+handler := devsonar.Middleware(reporter)(mux)
+http.ListenAndServe(":8080", handler)
+```
+
 ## Packages
 
 ### `devsonar`
@@ -225,6 +469,14 @@ The main package. Includes the relay server, AI client, CLI, error buffer, and r
 ### `@devsonar/error-reporter`
 
 Lightweight standalone client library for sending errors to the relay server. Same reporter API as `devsonar`, but with zero runtime dependencies.
+
+### `devsonar` (Python)
+
+Python error reporter. Zero dependencies (stdlib only). Supports Django and Flask middleware. Install via `pip install devsonar`.
+
+### `devsonar-go` (Go)
+
+Go error reporter. Zero external dependencies. Supports `net/http` middleware and panic recovery. Install via `go get github.com/taro-hirose/devsonar-go`.
 
 ## License
 
