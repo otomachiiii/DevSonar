@@ -69,9 +69,6 @@ Dashboard: http://localhost:${config.port}/
   });
 }
 
-/**
- * サーバー起動を試みる。ポートが使用中なら false を返す。
- */
 async function tryStartServer(config: RelayConfig): Promise<boolean> {
   const sessionManager = new SessionManager();
   await sessionManager.initialize();
@@ -95,13 +92,11 @@ async function tryStartServer(config: RelayConfig): Promise<boolean> {
 }
 
 async function runWithApp(config: RelayConfig, userCommand: string[]): Promise<void> {
-  // ポートが既に使われていたらサーバー起動をスキップ（別プロセスで起動済み）
   const serverStarted = await tryStartServer(config);
   if (!serverStarted) {
     console.log(`[DevSonar] Relay server already running on port ${config.port}, skipping`);
   }
 
-  // register.js の file:// URL を構築（--import 用）
   const registerUrl = new URL('./register.js', import.meta.url).href;
   const existingNodeOptions = process.env.NODE_OPTIONS || '';
   const nodeOptions = `--import ${registerUrl} ${existingNodeOptions}`.trim();

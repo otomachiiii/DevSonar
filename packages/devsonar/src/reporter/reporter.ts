@@ -75,7 +75,6 @@ let globalReporter: ErrorReporter | null = null;
 export function initErrorReporter(config?: ErrorReporterConfig): ErrorReporter {
   globalReporter = new ErrorReporter(config);
 
-  // ブラウザ環境なら自動でグローバルエラーハンドラーをセットアップ
   if (typeof window !== 'undefined') {
     window.addEventListener('error', (event: ErrorEvent) => {
       if (event.error) {
@@ -88,14 +87,12 @@ export function initErrorReporter(config?: ErrorReporterConfig): ErrorReporter {
       globalReporter!.report(error, 'unhandledrejection');
     });
 
-    // fetch をラップして HTTP エラー（4xx/5xx）を自動キャプチャ
     const originalFetch = window.fetch.bind(window);
     const relayUrl = config?.relayUrl || 'http://localhost:9100';
     window.fetch = async (...args: Parameters<typeof fetch>): Promise<Response> => {
       try {
         const response = await originalFetch(...args);
 
-        // relay サーバーへの送信自体は除外（無限ループ防止）
         const url = typeof args[0] === 'string' ? args[0] : args[0] instanceof Request ? args[0].url : '';
         if (!response.ok && !url.startsWith(relayUrl)) {
           const method = args[1]?.method || 'GET';
@@ -105,7 +102,6 @@ export function initErrorReporter(config?: ErrorReporterConfig): ErrorReporter {
 
         return response;
       } catch (err) {
-        // ネットワークエラー等
         const url = typeof args[0] === 'string' ? args[0] : args[0] instanceof Request ? args[0].url : '';
         if (!url.startsWith(relayUrl)) {
           const error = err instanceof Error ? err : new Error(String(err));
@@ -116,7 +112,6 @@ export function initErrorReporter(config?: ErrorReporterConfig): ErrorReporter {
     };
   }
 
-  // Node.js 環境なら process のエラーハンドラーをセットアップ
   if (typeof process !== 'undefined' && process.on) {
     process.on('uncaughtException', (error: Error) => {
       globalReporter!.report(error, 'uncaughtException');

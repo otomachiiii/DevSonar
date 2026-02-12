@@ -28,36 +28,36 @@ export class AIClient {
     const errorCount = errors.length;
     const timestamp = new Date().toISOString();
 
-    let prompt = `# ランタイムエラー検出 (${errorCount}件)\n\n`;
-    prompt += `**タイムスタンプ**: ${timestamp}\n\n`;
-    prompt += `以下のエラーが検出されました。**プロジェクトのソースコードを参照して、原因を特定し、修正を行ってください。**\n\n`;
+    let prompt = `# Runtime Error Detected (${errorCount} error${errorCount > 1 ? 's' : ''})\n\n`;
+    prompt += `**Timestamp**: ${timestamp}\n\n`;
+    prompt += `The following error${errorCount > 1 ? 's have' : ' has'} been detected. **Please refer to the project source code to identify the cause and apply a fix.**\n\n`;
 
     errors.forEach((error, index) => {
-      prompt += `## エラー ${index + 1}/${errorCount}\n\n`;
-      prompt += `**メッセージ**: \`${error.message}\`\n\n`;
+      prompt += `## Error ${index + 1}/${errorCount}\n\n`;
+      prompt += `**Message**: \`${error.message}\`\n\n`;
       if (error.source) {
-        prompt += `**発生元**: ${error.source}\n\n`;
+        prompt += `**Source**: ${error.source}\n\n`;
       }
       if (error.stack) {
         const stack = this.truncateStack(error.stack);
-        prompt += `**スタックトレース**:\n\`\`\`\n${stack}\n\`\`\`\n\n`;
+        prompt += `**Stack Trace**:\n\`\`\`\n${stack}\n\`\`\`\n\n`;
       }
       if (error.context) {
         const contextStr = JSON.stringify(error.context, null, 2);
         if (contextStr.length < 1000) {
-          prompt += `**コンテキスト**:\n\`\`\`json\n${contextStr}\n\`\`\`\n\n`;
+          prompt += `**Context**:\n\`\`\`json\n${contextStr}\n\`\`\`\n\n`;
         }
       }
       prompt += `---\n\n`;
     });
 
-    prompt += `\n**次のアクションを実行してください**:\n\n`;
-    prompt += `1. 各エラーのスタックトレースから発生箇所を特定\n`;
-    prompt += `2. 該当するソースコードファイルを読み込む\n`;
-    prompt += `3. エラーの根本原因を分析\n`;
-    prompt += `4. 修正案を提示し、可能であればコードを修正\n`;
-    prompt += `5. 修正が完了したら \`git diff\` を出力して変更内容を報告\n\n`;
-    prompt += `**注意**: \`git add\` や \`git commit\` は絶対に実行しないでください。変更はステージングせず、差分の確認のみ行ってください。\n\n`;
+    prompt += `\n**Please perform the following actions**:\n\n`;
+    prompt += `1. Identify the error location from each stack trace\n`;
+    prompt += `2. Read the relevant source code files\n`;
+    prompt += `3. Analyze the root cause of the error\n`;
+    prompt += `4. Propose a fix and apply the code changes if possible\n`;
+    prompt += `5. Once the fix is applied, run \`git diff\` and report the changes\n\n`;
+    prompt += `**Important**: Do NOT run \`git add\` or \`git commit\`. Do not stage any changes — only review the diff.\n\n`;
 
     return prompt;
   }

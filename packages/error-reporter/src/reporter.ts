@@ -1,11 +1,5 @@
 import { ErrorReport, ErrorReporterConfig } from './types';
 
-/**
- * エラーレポーター
- *
- * エラー情報を中継サーバーに送信する。
- * fire-and-forgetで送信し、アプリケーションの処理をブロックしない。
- */
 export class ErrorReporter {
   private config: Required<ErrorReporterConfig>;
 
@@ -19,9 +13,6 @@ export class ErrorReporter {
     };
   }
 
-  /**
-   * エラーを中継サーバーに送信
-   */
   async report(error: Error | ErrorReport, source?: string): Promise<void> {
     if (!this.config.enabled) {
       return;
@@ -29,7 +20,6 @@ export class ErrorReporter {
 
     const report = this.normalizeError(error, source);
 
-    // fire-and-forget: 送信結果を待たない
     this.sendToRelay(report).catch((err) => {
       if (this.config.debug) {
         console.error('[ErrorReporter] Failed to send error to relay server:', err);
@@ -37,9 +27,6 @@ export class ErrorReporter {
     });
   }
 
-  /**
-   * エラーを正規化してErrorReport形式に変換
-   */
   private normalizeError(error: Error | ErrorReport, source?: string): ErrorReport {
     if (this.isErrorReport(error)) {
       return error;
@@ -58,9 +45,6 @@ export class ErrorReporter {
     };
   }
 
-  /**
-   * 中継サーバーにPOST送信
-   */
   private async sendToRelay(report: ErrorReport): Promise<void> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
@@ -88,22 +72,13 @@ export class ErrorReporter {
   }
 }
 
-/**
- * グローバルエラーレポーターインスタンス
- */
 let globalReporter: ErrorReporter | null = null;
 
-/**
- * グローバルエラーレポーターを初期化
- */
 export function initErrorReporter(config?: ErrorReporterConfig): ErrorReporter {
   globalReporter = new ErrorReporter(config);
   return globalReporter;
 }
 
-/**
- * グローバルエラーレポーターを取得
- */
 export function getErrorReporter(): ErrorReporter {
   if (!globalReporter) {
     throw new Error('ErrorReporter not initialized. Call initErrorReporter() first.');
@@ -111,9 +86,6 @@ export function getErrorReporter(): ErrorReporter {
   return globalReporter;
 }
 
-/**
- * エラーを報告（簡易ヘルパー）
- */
 export function reportError(error: Error | ErrorReport, source?: string): void {
   if (globalReporter) {
     globalReporter.report(error, source);

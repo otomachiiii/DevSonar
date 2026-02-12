@@ -1,12 +1,5 @@
 import { ErrorReporter } from './reporter/reporter.js';
 
-/**
- * DevSonar 自動登録モジュール
- *
- * node --import devsonar/register app.js
- * または devsonar run -- <command> で自動的に読み込まれる。
- */
-
 const reporter = new ErrorReporter({
   relayUrl: process.env.DEVSONAR_URL || 'http://localhost:9100',
   enabled: true,

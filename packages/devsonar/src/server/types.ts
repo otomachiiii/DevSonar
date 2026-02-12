@@ -22,9 +22,6 @@ export interface HealthResponse {
   target: 'claude-code';
 }
 
-/**
- * AI処理中のエラーを追跡するエントリ
- */
 export interface InFlightEntry {
   message: string;
   source?: string;

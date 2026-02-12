@@ -71,7 +71,6 @@ export function createServer(config: RelayConfig, sessionManager: SessionManager
     res.json({ flushed: buffered });
   });
 
-  // ダッシュボード配信
   const dashboardDir = resolve(__dirname, '..', '..', 'dashboard');
   if (existsSync(dashboardDir)) {
     app.use('/', express.static(dashboardDir));

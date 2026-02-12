@@ -1,234 +1,244 @@
-# 🔊 DevSonar
+# DevSonar
 
-ローカル開発環境のランタイムエラーをAIエージェント（Claude Code CLI）に自動送信し、リアルタイムで解析・修正提案を得るシステム。
+AI-powered runtime error monitoring for local development. Automatically captures errors from your application and sends them to Claude for analysis and code fixes.
 
-## 🎯 概要
-
-**DevSonar**は、フロントエンド・バックエンドで発生したエラーを自動検知し、AIエージェントに送信してソースコード解析と修正案の提案を受けられるツールです。
-
-### システム構成
+## Architecture
 
 ```
-┌─────────────┐       ┌─────────────┐
-│  Frontend   │       │  Backend    │
-│ (React)     │       │ (Express)   │
-└──────┬──────┘       └──────┬──────┘
-       │                     │
-       │ エラー発生時         │
-       │ POST /errors        │
-       ▼                     ▼
-┌──────────────────────────────────┐
-│   AI Error Relay Server          │
-│   - バッファリング                │
-│   - デバウンス（3秒）             │
-└──────────────┬───────────────────┘
-               │
-               │ 構造化プロンプト送信
-               ▼
-┌──────────────────────────────────┐
-│   Claude Code CLI                │
-│   - エラー解析                    │
-│   - ソースコード参照              │
-│   - 修正案提案                    │
-└──────────────────────────────────┘
+Your Application (Node.js / Browser)
+  |
+  |  Errors captured automatically
+  |  POST /errors
+  v
+DevSonar Relay Server (port 9100)
+  - Buffering & deduplication
+  - Debounce (default 3s)
+  |
+  |  Structured prompt
+  v
+Claude (Agent SDK or CLI)
+  - Error analysis
+  - Source code inspection
+  - Auto-fix
 ```
 
-## 🚀 クイックスタート
+## Quick Start
 
-### 前提条件
+### Prerequisites
 
 - **Node.js** >= 18.0.0
 - **npm** >= 9.0.0
-- **Docker** & **Docker Compose**（Docker使用の場合）
-- **Claude Code CLI**（`claude`コマンドが使用可能であること）
+- **Claude Code CLI** (`claude` command available)
 
-### Docker Composeで起動（推奨）
+### Install & Run
 
 ```bash
-# 1. リポジトリをクローン
-cd DevSonar
-
-# 2. 依存関係をインストール
 npm install
+npm run build --workspace=packages/devsonar
 
-# 3. Docker Composeで全サービスを起動
-docker-compose up -d
+# Run your app with DevSonar auto-instrumentation
+npx devsonar run -- node your-app.js
 
-# 4. ログを確認
-docker-compose logs -f
+# Or run your app with tsx
+npx devsonar run -- tsx watch src/index.ts
 ```
 
-**起動完了！** 以下のURLにアクセスできます：
+DevSonar automatically starts a relay server and injects error monitoring into the child process via `node --import`.
 
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:3001
-- **Relay Server**: http://localhost:9100
-
-### ローカル環境で起動（開発用）
+### Standalone Server
 
 ```bash
-# 1. 依存関係をインストール
-npm install
-
-# 2. 各サービスの.envファイルを作成
-cp apps/relay-server/.env.example apps/relay-server/.env
-cp apps/backend/.env.example apps/backend/.env
-cp apps/frontend/.env.example apps/frontend/.env
-
-# 3. エラーレポーターパッケージをビルド
-npm run build --workspace=packages/error-reporter
-
-# 4. Turbo Repoで全サービスを起動
-npm run dev
+# Start the relay server only
+npx devsonar
 ```
 
-または、個別に起動：
+Then integrate the reporter into your application manually (see below).
+
+## Packages
+
+### `devsonar`
+
+The main package. Includes the relay server, AI client, CLI, error buffer, and reporter.
+
+```
+packages/devsonar/
+├── bin/devsonar.js          # CLI entry point
+├── src/
+│   ├── cli.ts               # CLI: `devsonar run -- <command>`
+│   ├── register.ts          # Auto-registration via node --import
+│   ├── index.ts             # Public API (auto-initializes on import)
+│   ├── reporter/
+│   │   ├── types.ts          # ErrorReport, ErrorReporterConfig
+│   │   ├── reporter.ts       # ErrorReporter class + global helpers
+│   │   └── middleware.ts      # Express error middleware
+│   └── server/
+│       ├── types.ts           # RelayConfig, HealthResponse, InFlightEntry
+│       ├── server.ts          # Express relay server (POST /errors, GET /health, POST /flush)
+│       ├── buffer.ts          # Error buffering, deduplication, debounce
+│       ├── ai-client.ts       # Sends errors to Claude (SDK or CLI mode)
+│       └── session-manager.ts # Persists Claude session ID (~/.devsonar/session-id.txt)
+```
+
+### `@devsonar/error-reporter`
+
+Lightweight standalone client library for sending errors to the relay server. Same reporter API as `devsonar`, but with zero runtime dependencies.
+
+```
+packages/error-reporter/
+└── src/
+    ├── types.ts       # ErrorReport, ErrorReporterConfig
+    ├── reporter.ts    # ErrorReporter class + global helpers
+    ├── middleware.ts   # Express error middleware
+    └── index.ts       # Barrel export
+```
+
+## Usage
+
+### Option 1: CLI Auto-Instrumentation (Recommended)
+
+The simplest way. DevSonar wraps your Node.js process and captures all uncaught exceptions and unhandled rejections automatically.
 
 ```bash
-# ターミナル1: 中継サーバー
-npm run relay
-
-# ターミナル2: バックエンド
-npm run backend
-
-# ターミナル3: フロントエンド
-npm run frontend
+npx devsonar run -- tsx watch src/index.ts
 ```
 
-## 📦 プロジェクト構成
+This is how `apps/backend` uses DevSonar:
 
-```
-DevSonar/
-├── apps/
-│   ├── relay-server/      # AI Error Relay中継サーバー
-│   ├── backend/           # Express.js TODO API
-│   └── frontend/          # React TODOアプリ
-├── packages/
-│   └── error-reporter/    # エラーレポーター共通パッケージ
-├── docker-compose.yml     # Docker Compose設定
-├── turbo.json             # Turbo Repo設定
-└── package.json           # ルートパッケージ
-```
-
-## 🧪 エラー送信のテスト
-
-### フロントエンドエラー
-
-1. http://localhost:3000 にアクセス
-2. 「💥 フロントエンドエラーをテスト」ボタンをクリック
-3. エラーが中継サーバー経由でClaude Code CLIに送信される
-
-### バックエンドエラー
-
-1. http://localhost:3000 にアクセス
-2. 「🔥 バックエンドエラーをテスト」ボタンをクリック
-3. エラーが中継サーバー経由でClaude Code CLIに送信される
-
-または、直接APIを呼び出し：
-
-```bash
-curl http://localhost:3001/api/error
-```
-
-### エラー送信フロー確認
-
-```bash
-# 中継サーバーのヘルスチェック
-curl http://localhost:9100/health
-
-# バッファされているエラー件数を確認
-# { "status": "ok", "buffered": 0, "target": "claude-code" }
-
-# 強制フラッシュ（テスト用）
-curl -X POST http://localhost:9100/flush
-```
-
-## ⚙️ 設定
-
-### 環境変数
-
-#### Relay Server（`apps/relay-server/.env`）
-
-| 変数名 | デフォルト | 説明 |
-|---|---|---|
-| `RELAY_PORT` | `9100` | 中継サーバーのポート |
-| `RELAY_TARGET` | `claude-code` | 送信先AIエージェント |
-| `DEBOUNCE_MS` | `3000` | デバウンス間隔（ミリ秒） |
-| `MAX_BUFFER_SIZE` | `50` | バッファ上限 |
-| `MAX_STACK_LENGTH` | `2000` | スタックトレース送信上限文字数 |
-| `CLAUDE_SESSION_ID` | - | Claude Code CLIセッションID（任意） |
-
-#### Backend API（`apps/backend/.env`）
-
-| 変数名 | デフォルト | 説明 |
-|---|---|---|
-| `PORT` | `3001` | バックエンドAPIのポート |
-| `ERROR_REPORTER_ENABLED` | `true` | エラーレポーター有効化 |
-| `RELAY_URL` | `http://localhost:9100` | 中継サーバーURL |
-
-#### Frontend（`apps/frontend/.env`）
-
-| 変数名 | デフォルト | 説明 |
-|---|---|---|
-| `VITE_API_URL` | `http://localhost:3001/api` | バックエンドAPI URL |
-| `VITE_RELAY_URL` | `http://localhost:9100` | 中継サーバーURL |
-| `VITE_ERROR_REPORTER_ENABLED` | `true` | エラーレポーター有効化 |
-
-## 🔧 開発コマンド
-
-```bash
-# 全サービスを開発モードで起動
-npm run dev
-
-# 全サービスをビルド
-npm run build
-
-# 全サービスをクリーン
-npm run clean
-
-# 個別サービスを起動
-npm run relay      # 中継サーバー
-npm run backend    # バックエンド
-npm run frontend   # フロントエンド
-```
-
-## 🐳 Dockerコマンド
-
-```bash
-# 全サービスをビルド&起動
-docker-compose up -d
-
-# ログを表示
-docker-compose logs -f
-
-# 特定のサービスのログを表示
-docker-compose logs -f relay-server
-docker-compose logs -f backend
-docker-compose logs -f frontend
-
-# 停止
-docker-compose down
-
-# 再ビルド
-docker-compose up -d --build
-
-# 完全削除（ボリューム含む）
-docker-compose down -v
-```
-
-## 📚 API仕様
-
-### Relay Server
-
-#### `POST /errors`
-
-エラーレポートを受信。
-
-**リクエスト**:
 ```json
 {
-  "message": "Error message",
-  "stack": "Stack trace...",
+  "scripts": {
+    "dev": "devsonar run -- tsx watch src/index.ts"
+  }
+}
+```
+
+No code changes needed in your application.
+
+### Option 2: Import `devsonar`
+
+Import the package to auto-initialize global error handlers.
+
+```typescript
+// Just import — error monitoring starts automatically
+import 'devsonar';
+```
+
+This is how `apps/frontend` uses DevSonar:
+
+```typescript
+// src/services/errorReporter.ts
+import 'devsonar';
+```
+
+```typescript
+// src/App.tsx
+import './services/errorReporter';
+```
+
+On import, `devsonar` calls `initErrorReporter()` which sets up:
+- **Browser**: `window.error`, `unhandledrejection` listeners, and `fetch` wrapper for HTTP error capture
+- **Node.js**: `process.uncaughtException` and `process.unhandledRejection` handlers
+
+### Option 3: Manual Integration with `@devsonar/error-reporter`
+
+For fine-grained control, use the standalone reporter package.
+
+#### Express.js Backend
+
+```typescript
+import express from 'express';
+import { ErrorReporter, errorReporterMiddleware } from '@devsonar/error-reporter';
+
+const app = express();
+
+const reporter = new ErrorReporter({
+  relayUrl: 'http://localhost:9100',
+  enabled: true,
+});
+
+// Add as the last middleware
+app.use(errorReporterMiddleware(reporter));
+```
+
+#### Browser / Frontend
+
+```typescript
+import { initErrorReporter } from '@devsonar/error-reporter';
+
+initErrorReporter({
+  relayUrl: 'http://localhost:9100',
+  enabled: true,
+});
+```
+
+`initErrorReporter` in the browser automatically sets up:
+- `window.error` and `unhandledrejection` listeners
+- `fetch` wrapper that reports HTTP 4xx/5xx errors (excluding requests to the relay server itself)
+
+#### Manual Error Reporting
+
+```typescript
+import { ErrorReporter } from '@devsonar/error-reporter';
+
+const reporter = new ErrorReporter({ relayUrl: 'http://localhost:9100' });
+
+try {
+  riskyOperation();
+} catch (err) {
+  reporter.report(err, 'riskyOperation');
+}
+```
+
+## Configuration
+
+### CLI Options
+
+```bash
+devsonar run [options] -- <command>
+
+Options:
+  --port <number>         Relay server port (default: 9100)
+  --mode <sdk|cli>        Claude mode (default: sdk)
+  --debounce <ms>         Debounce interval (default: 3000)
+  --max-buffer <number>   Max buffer size (default: 50)
+  --max-stack <number>    Max stack trace length (default: 2000)
+  --project-dir <path>    Project directory (default: .)
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `RELAY_PORT` | `9100` | Relay server port |
+| `CLAUDE_MODE` | `sdk` | `sdk` (Agent SDK) or `cli` (Claude Code CLI) |
+| `DEBOUNCE_MS` | `3000` | Debounce interval in ms |
+| `MAX_BUFFER_SIZE` | `50` | Max errors buffered before forced flush |
+| `MAX_STACK_LENGTH` | `2000` | Max stack trace characters sent |
+| `PROJECT_DIR` | `.` | Project root for Claude to inspect |
+| `DEVSONAR_URL` | `http://localhost:9100` | Relay URL (set automatically in child process) |
+| `DEVSONAR_DEBUG` | `false` | Enable debug logging in reporter |
+
+### ErrorReporterConfig
+
+| Property | Type | Default | Description |
+|---|---|---|---|
+| `relayUrl` | `string` | `http://localhost:9100` | Relay server URL |
+| `enabled` | `boolean` | `true` (dev only in `error-reporter`) | Enable/disable reporting |
+| `timeout` | `number` | `1000` | Request timeout in ms |
+| `maxStackLength` | `number` | `2000` | Max stack trace characters |
+| `debug` | `boolean` | `false` | Log send failures to console |
+
+## API Endpoints
+
+### `POST /errors`
+
+Submit error reports.
+
+**Request:**
+```json
+{
+  "message": "Cannot read property 'id' of undefined",
+  "stack": "TypeError: Cannot read property...",
   "source": "POST /api/users",
   "timestamp": "2025-01-01T00:00:00.000Z",
   "context": {
@@ -238,119 +248,89 @@ docker-compose down -v
 }
 ```
 
-**レスポンス**: `202 Accepted`
+**Response:** `202 Accepted`
 ```json
-{
-  "received": 1
-}
+{ "received": 1 }
 ```
 
-#### `GET /health`
+### `GET /health`
 
-ヘルスチェック。
-
-**レスポンス**:
 ```json
 {
   "status": "ok",
   "buffered": 0,
+  "session_id": "abc-123",
   "target": "claude-code"
 }
 ```
 
-### Backend API
+### `POST /flush`
 
-#### `GET /api/todos`
+Force flush buffered errors immediately.
 
-全てのTODOを取得。
+```json
+{ "flushed": 3 }
+```
 
-#### `POST /api/todos`
+## Example: apps/
 
-TODOを作成。
+The `apps/` directory contains a demo TODO application that shows DevSonar in action.
 
-**リクエスト**:
+### apps/backend
+
+Express.js API using CLI auto-instrumentation:
+
 ```json
 {
-  "title": "新しいTODO"
+  "scripts": {
+    "dev": "devsonar run -- tsx watch src/index.ts"
+  }
 }
 ```
 
-#### `PATCH /api/todos/:id`
-
-TODOを更新。
-
-#### `DELETE /api/todos/:id`
-
-TODOを削除。
-
-#### `GET /api/error`
-
-テスト用エラーエンドポイント。
-
-## 🎨 カスタマイズ
-
-### 独自のアプリにエラーレポーターを統合
-
-#### バックエンド（Express.js）
-
-```typescript
-import { initErrorReporter, errorReporterMiddleware } from '@devsonar/error-reporter';
-
-const errorReporter = initErrorReporter({
-  relayUrl: 'http://localhost:9100',
-  enabled: process.env.NODE_ENV === 'development',
-});
-
-app.use(errorReporterMiddleware(errorReporter));
+**`.env`:**
+```
+PORT=3001
+ERROR_REPORTER_ENABLED=true
+RELAY_URL=http://localhost:9100
 ```
 
-#### フロントエンド（React/Vue/etc）
+### apps/frontend
+
+React app using `import 'devsonar'`:
 
 ```typescript
-const errorReporter = new ErrorReporter({
-  relayUrl: 'http://localhost:9100',
-  enabled: import.meta.env.DEV,
-});
+// src/services/errorReporter.ts
+import 'devsonar';
 
-// グローバルエラーハンドラー
-window.addEventListener('error', (event) => {
-  errorReporter.report(event.error);
-});
-
-window.addEventListener('unhandledrejection', (event) => {
-  errorReporter.report(new Error(event.reason));
-});
+// src/App.tsx
+import './services/errorReporter';
 ```
 
-## 🚧 トラブルシューティング
+**`.env`:**
+```
+VITE_API_URL=http://localhost:3001/api
+VITE_RELAY_URL=http://localhost:9100
+VITE_ERROR_REPORTER_ENABLED=true
+```
 
-### エラーがClaude Code CLIに送信されない
+## Development
 
-1. Claude Code CLIが正しくインストールされているか確認
-   ```bash
-   claude --version
-   ```
+```bash
+# Build all packages
+npm run build
 
-2. 中継サーバーのログを確認
-   ```bash
-   docker-compose logs -f relay-server
-   ```
+# Build specific package
+npm run build --workspace=packages/devsonar
+npm run build --workspace=packages/error-reporter
 
-3. 環境変数 `RELAY_TARGET` が `claude-code` に設定されているか確認
+# Clean all
+npm run clean
 
-### バックエンド/フロントエンドが中継サーバーに接続できない
+# Run demo app
+npm run dev
+```
 
-1. 中継サーバーが起動しているか確認
-   ```bash
-   curl http://localhost:9100/health
-   ```
-
-2. 各サービスの `RELAY_URL` / `VITE_RELAY_URL` が正しいか確認
-
-## 📄 ライセンス
+## License
 
 MIT
-
-## 🤝 貢献
-
-Issue・PRを歓迎します！
