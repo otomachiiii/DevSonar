@@ -4,28 +4,24 @@ AI-powered runtime error monitoring for local development. Automatically capture
 
 ## Architecture
 
-```
-Your Application (Any Language)
-  |
-  ├── [Node.js] --import hook (auto)
-  ├── [Python/Go] Language reporter (SDK)
-  ├── [Any] stderr monitoring (auto)
-  |
-  |  POST /errors
-  v
-DevSonar Relay Server (port 9100)
-  - Buffering & deduplication
-  - Debounce (default 3s)
-  |
-  |  Structured prompt
-  v
-Claude (Agent SDK or CLI)
-  - Error analysis
-  - Source code inspection
-  - Auto-fix
+```mermaid
+flowchart TB
+    App["Your Application (Any Language)"]
+
+    App -->|"[Node.js] --import hook (auto)"| Relay
+    App -->|"[Python/Go] Language reporter (SDK)"| Relay
+    App -->|"[Any] stderr monitoring (auto)"| Relay
+
+    Relay["DevSonar Relay Server (port 9100)\n- Buffering & deduplication\n- Debounce (default 3s)"]
+
+    Relay -->|"Structured prompt"| Claude
+
+    Claude["Claude (Agent SDK or CLI)\n- Error analysis\n- Source code inspection\n- Auto-fix"]
 ```
 
 ## Install
+
+### Node.js
 
 ```bash
 npm install devsonar
@@ -35,6 +31,18 @@ Or install the lightweight reporter only:
 
 ```bash
 npm install @devsonar/error-reporter
+```
+
+### Python
+
+```bash
+pip install devsonar
+```
+
+### Go
+
+```bash
+go get github.com/taro-hirose/devsonar-go
 ```
 
 ### Prerequisites
@@ -163,6 +171,11 @@ The backend starts with DevSonar monitoring. Errors from both the backend (Node.
 
 The simplest way. DevSonar wraps your Node.js process and captures all uncaught exceptions and unhandled rejections automatically.
 
+No code changes needed in your application. DevSonar starts a relay server and injects error monitoring into the child process. For non-Node.js processes, stderr is automatically monitored for error patterns.
+
+<details>
+<summary>Node.js</summary>
+
 ```bash
 npx devsonar run -- node your-app.js
 ```
@@ -177,16 +190,64 @@ Use it in your `package.json`:
 }
 ```
 
-No code changes needed in your application. DevSonar starts a relay server and injects error monitoring into the child process via `node --import`. For non-Node.js processes, stderr is automatically monitored for error patterns.
+Node.js processes get automatic error capture via `node --import` hook — all `uncaughtException` and `unhandledRejection` errors are captured.
+
+</details>
+
+<details>
+<summary>Python</summary>
 
 ```bash
-# Works with any language
 npx devsonar run -- python app.py
+```
+
+Python tracebacks are automatically detected from stderr.
+
+</details>
+
+<details>
+<summary>Go</summary>
+
+```bash
 npx devsonar run -- go run main.go
+```
+
+Go panics are automatically detected from stderr.
+
+</details>
+
+<details>
+<summary>Ruby</summary>
+
+```bash
 npx devsonar run -- ruby app.rb
+```
+
+Ruby error patterns are automatically detected from stderr.
+
+</details>
+
+<details>
+<summary>Java</summary>
+
+```bash
 npx devsonar run -- java -jar app.jar
+```
+
+Java exceptions and errors are automatically detected from stderr.
+
+</details>
+
+<details>
+<summary>Rust</summary>
+
+```bash
 npx devsonar run -- cargo run
 ```
+
+Rust panics are automatically detected from stderr.
+
+</details>
 
 ### Option 2: Import `devsonar`
 
@@ -370,7 +431,8 @@ devsonar run -- java -jar app.jar # Detects Java exceptions
 devsonar run -- cargo run         # Detects Rust panics
 ```
 
-### Python Reporter
+<details>
+<summary><strong>Python</strong> — <code>pip install devsonar</code></summary>
 
 For richer error capture in Python applications (e.g., caught exceptions, framework integration), install the Python reporter:
 
@@ -418,7 +480,10 @@ app = Flask(__name__)
 init_devsonar(app)
 ```
 
-### Go Reporter
+</details>
+
+<details>
+<summary><strong>Go</strong> — <code>go get github.com/taro-hirose/devsonar-go</code></summary>
 
 For richer error capture in Go applications (e.g., recovered panics, HTTP middleware), install the Go reporter:
 
@@ -459,6 +524,8 @@ reporter := devsonar.New()
 handler := devsonar.Middleware(reporter)(mux)
 http.ListenAndServe(":8080", handler)
 ```
+
+</details>
 
 ## Packages
 
