@@ -4,9 +4,16 @@ import { createServer } from './server/server.js';
 import { SessionManager } from './server/session-manager.js';
 import { RelayConfig } from './server/types.js';
 import { StderrParser } from './stderr/index.js';
+import { logger } from './logger.js';
 import type { Server } from 'http';
 
-function parseCliArgs(argv: string[]): { args: Record<string, string>; subcommand: string | null; userCommand: string[] } {
+interface ParsedCliArgs {
+  args: Record<string, string>;
+  subcommand: string | null;
+  userCommand: string[];
+}
+
+function parseCliArgs(argv: string[]): ParsedCliArgs {
   const raw = argv.slice(2);
   const args: Record<string, string> = {};
   let subcommand: string | null = null;
@@ -49,7 +56,7 @@ async function startServer(config: RelayConfig): Promise<void> {
   const app = createServer(config, sessionManager);
 
   app.listen(config.port, () => {
-    console.log(`
+    logger.info('DevSonar', `
 ╔═══════════════════════════════════════════════════════════╗
 ║                                                           ║
 ║         DevSonar - AI Error Monitor                       ║
@@ -65,8 +72,7 @@ Endpoints:
   GET  /health  - Health check
   POST /flush   - Force flush buffer
 
-Dashboard: http://localhost:${config.port}/
-`);
+Dashboard: http://localhost:${config.port}/`);
   });
 }
 
@@ -78,7 +84,7 @@ async function tryStartServer(config: RelayConfig): Promise<boolean> {
 
   return new Promise<boolean>((resolve) => {
     const server: Server = app.listen(config.port, () => {
-      console.log(`[DevSonar] Relay server started on http://localhost:${config.port}`);
+      logger.info('DevSonar', `Relay server started on http://localhost:${config.port}`);
       resolve(true);
     });
 
@@ -95,7 +101,7 @@ async function tryStartServer(config: RelayConfig): Promise<boolean> {
 async function runWithApp(config: RelayConfig, userCommand: string[]): Promise<void> {
   const serverStarted = await tryStartServer(config);
   if (!serverStarted) {
-    console.log(`[DevSonar] Relay server already running on port ${config.port}, skipping`);
+    logger.info('DevSonar', `Relay server already running on port ${config.port}, skipping`);
   }
 
   const registerUrl = new URL('./register.js', import.meta.url).href;
@@ -107,9 +113,9 @@ async function runWithApp(config: RelayConfig, userCommand: string[]): Promise<v
   const relayUrl = `http://localhost:${config.port}`;
   const stderrParser = new StderrParser(relayUrl);
 
-  console.log(`[DevSonar] Starting: ${userCommand.join(' ')}`);
-  console.log(`[DevSonar] Auto-instrumentation enabled`);
-  console.log(`[DevSonar] stderr monitoring enabled (Python, Go, Ruby, Java, Rust)`);
+  logger.info('DevSonar', `Starting: ${userCommand.join(' ')}`);
+  logger.info('DevSonar', 'Auto-instrumentation enabled');
+  logger.info('DevSonar', 'stderr monitoring enabled (Python, Go, Ruby, Java, Rust)');
 
   const child = spawn(cmd, cmdArgs, {
     stdio: ['inherit', 'inherit', 'pipe'],
@@ -121,10 +127,13 @@ async function runWithApp(config: RelayConfig, userCommand: string[]): Promise<v
     shell: true,
   });
 
-  child.stderr!.on('data', (chunk: Buffer) => {
-    process.stderr.write(chunk);
-    stderrParser.feed(chunk);
-  });
+  const stderr = child.stderr;
+  if (stderr) {
+    stderr.on('data', (chunk: Buffer) => {
+      process.stderr.write(chunk);
+      stderrParser.feed(chunk);
+    });
+  }
 
   child.on('exit', (code) => {
     stderrParser.flush();
@@ -151,6 +160,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error('Failed to start DevSonar:', error);
+  logger.error('DevSonar', 'Failed to start DevSonar:', error);
   process.exit(1);
 });

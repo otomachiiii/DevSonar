@@ -65,8 +65,8 @@ export class ErrorReporter {
     }
   }
 
-  private isErrorReport(obj: any): obj is ErrorReport {
-    return obj && typeof obj === 'object' && 'message' in obj && 'timestamp' in obj;
+  private isErrorReport(obj: unknown): obj is ErrorReport {
+    return obj !== null && typeof obj === 'object' && 'message' in obj && 'timestamp' in obj;
   }
 }
 
@@ -75,16 +75,18 @@ let globalReporter: ErrorReporter | null = null;
 export function initErrorReporter(config?: ErrorReporterConfig): ErrorReporter {
   globalReporter = new ErrorReporter(config);
 
+  const reporter = globalReporter;
+
   if (typeof window !== 'undefined') {
     window.addEventListener('error', (event: ErrorEvent) => {
       if (event.error) {
-        globalReporter!.report(event.error, 'window.onerror');
+        reporter.report(event.error, 'window.onerror');
       }
     });
 
     window.addEventListener('unhandledrejection', (event: PromiseRejectionEvent) => {
       const error = event.reason instanceof Error ? event.reason : new Error(String(event.reason));
-      globalReporter!.report(error, 'unhandledrejection');
+      reporter.report(error, 'unhandledrejection');
     });
 
     const originalFetch = window.fetch.bind(window);
@@ -97,7 +99,7 @@ export function initErrorReporter(config?: ErrorReporterConfig): ErrorReporter {
         if (!response.ok && !url.startsWith(relayUrl)) {
           const method = args[1]?.method || 'GET';
           const error = new Error(`HTTP ${response.status} ${response.statusText}: ${method} ${url}`);
-          globalReporter!.report(error, `fetch ${method} ${url}`);
+          reporter.report(error, `fetch ${method} ${url}`);
         }
 
         return response;
@@ -105,7 +107,7 @@ export function initErrorReporter(config?: ErrorReporterConfig): ErrorReporter {
         const url = typeof args[0] === 'string' ? args[0] : args[0] instanceof Request ? args[0].url : '';
         if (!url.startsWith(relayUrl)) {
           const error = err instanceof Error ? err : new Error(String(err));
-          globalReporter!.report(error, `fetch ${url}`);
+          reporter.report(error, `fetch ${url}`);
         }
         throw err;
       }
@@ -114,12 +116,12 @@ export function initErrorReporter(config?: ErrorReporterConfig): ErrorReporter {
 
   if (typeof process !== 'undefined' && process.on) {
     process.on('uncaughtException', (error: Error) => {
-      globalReporter!.report(error, 'uncaughtException');
+      reporter.report(error, 'uncaughtException');
     });
 
     process.on('unhandledRejection', (reason: unknown) => {
       const error = reason instanceof Error ? reason : new Error(String(reason));
-      globalReporter!.report(error, 'unhandledRejection');
+      reporter.report(error, 'unhandledRejection');
     });
   }
 

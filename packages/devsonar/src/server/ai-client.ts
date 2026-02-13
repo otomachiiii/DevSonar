@@ -3,8 +3,28 @@ import { promisify } from 'util';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { ErrorReport, RelayConfig } from './types.js';
 import { SessionManager } from './session-manager.js';
+import { logger } from '../logger.js';
 
 const execAsync = promisify(exec);
+
+interface SDKInitMessage {
+  type: 'system';
+  subtype: 'init';
+  session_id: string;
+}
+
+interface SDKAssistantMessage {
+  type: 'assistant';
+  content: Array<{ type: string; text?: string }> | string;
+  message?: { content: string };
+}
+
+interface SDKResultMessage {
+  type: 'result';
+  result: string;
+}
+
+type SDKMessage = SDKInitMessage | SDKAssistantMessage | SDKResultMessage | { type: string };
 
 export class AIClient {
   constructor(
@@ -15,7 +35,7 @@ export class AIClient {
   async send(errors: ErrorReport[]): Promise<void> {
     const prompt = this.buildPrompt(errors);
 
-    console.log(`[AI Client] === Prompt ===\n${prompt}\n[AI Client] === End Prompt ===`);
+    logger.debug('AI Client', `=== Prompt ===\n${prompt}\n=== End Prompt ===`);
 
     if (this.config.claudeMode === 'sdk') {
       await this.sendViaSDK(prompt);
@@ -75,7 +95,7 @@ export class AIClient {
     } catch (error) {
       const sessionId = this.sessionManager.getSessionId();
       if (sessionId) {
-        console.warn(`[AI Client] Resume failed for session ${sessionId}, retrying with new session...`);
+        logger.warn('AI Client', `Resume failed for session ${sessionId}, retrying with new session...`);
         await this.sessionManager.reset();
         await this.executeSDKQuery(prompt);
       } else {
@@ -86,8 +106,8 @@ export class AIClient {
 
   private async executeSDKQuery(prompt: string): Promise<void> {
     const sessionId = this.sessionManager.getSessionId();
-    console.log(`[AI Client] Sending via Agent SDK...`);
-    console.log(`[AI Client] Session ID: ${sessionId || 'new session'}`);
+    logger.info('AI Client', 'Sending via Agent SDK...');
+    logger.debug('AI Client', `Session ID: ${sessionId || 'new session'}`);
 
     for await (const message of query({
       prompt,
@@ -99,23 +119,27 @@ export class AIClient {
         ...(sessionId ? { resume: sessionId } : {}),
       },
     })) {
-      console.log(`[AI Client] SDK message: type=${message.type} subtype=${(message as any).subtype || '-'}`);
-      if (message.type === 'system' && message.subtype === 'init') {
-        await this.sessionManager.saveSessionId((message as any).session_id);
+      const sdkMessage = message as SDKMessage;
+      logger.debug('AI Client', `SDK message: type=${sdkMessage.type} subtype=${'subtype' in sdkMessage ? sdkMessage.subtype : '-'}`);
+
+      if (sdkMessage.type === 'system' && 'subtype' in sdkMessage && sdkMessage.subtype === 'init') {
+        const initMsg = sdkMessage as SDKInitMessage;
+        await this.sessionManager.saveSessionId(initMsg.session_id);
       }
-      if (message.type === 'assistant') {
-        const msg = message as any;
-        const text = Array.isArray(msg.content)
-          ? msg.content.map((b: any) => b.text || '').join('')
-          : msg.message?.content || JSON.stringify(msg);
-        console.log(`[AI Client] === AI Response ===\n${text}\n[AI Client] === End AI Response ===`);
+      if (sdkMessage.type === 'assistant') {
+        const assistantMsg = sdkMessage as SDKAssistantMessage;
+        const text = Array.isArray(assistantMsg.content)
+          ? assistantMsg.content.map((b) => b.text || '').join('')
+          : assistantMsg.message?.content || JSON.stringify(assistantMsg);
+        logger.debug('AI Client', `=== AI Response ===\n${text}\n=== End AI Response ===`);
       }
-      if (message.type === 'result') {
-        console.log(`[AI Client] === Result ===\n${(message as any).result}\n[AI Client] === End Result ===`);
+      if (sdkMessage.type === 'result') {
+        const resultMsg = sdkMessage as SDKResultMessage;
+        logger.debug('AI Client', `=== Result ===\n${resultMsg.result}\n=== End Result ===`);
       }
     }
 
-    console.log(`[AI Client] Successfully sent via Agent SDK`);
+    logger.info('AI Client', 'Successfully sent via Agent SDK');
   }
 
   private async sendViaCLI(prompt: string): Promise<void> {
@@ -125,8 +149,8 @@ export class AIClient {
       const resumeFlag = sessionId ? `--resume ${sessionId}` : '';
       const command = `echo '${escapedPrompt}' | claude -p --dangerously-skip-permissions ${resumeFlag}`;
 
-      console.log(`[AI Client] Sending to Claude Code CLI...`);
-      console.log(`[AI Client] Session ID: ${sessionId || 'new session'}`);
+      logger.info('AI Client', 'Sending to Claude Code CLI...');
+      logger.debug('AI Client', `Session ID: ${sessionId || 'new session'}`);
 
       const { stdout, stderr } = await execAsync(command, {
         cwd: this.config.projectDir,
@@ -135,15 +159,15 @@ export class AIClient {
       });
 
       if (stderr) {
-        console.error(`[AI Client] Claude Code stderr:`, stderr);
+        logger.error('AI Client', `Claude Code stderr: ${stderr}`);
       }
       if (stdout) {
-        console.log(`[AI Client] === AI Response ===\n${stdout}\n[AI Client] === End AI Response ===`);
+        logger.debug('AI Client', `=== AI Response ===\n${stdout}\n=== End AI Response ===`);
       }
 
-      console.log(`[AI Client] Successfully sent to Claude Code CLI`);
+      logger.info('AI Client', 'Successfully sent to Claude Code CLI');
     } catch (error) {
-      console.error(`[AI Client] Failed to send to Claude Code:`, error);
+      logger.error('AI Client', 'Failed to send to Claude Code:', error);
       throw error;
     }
   }

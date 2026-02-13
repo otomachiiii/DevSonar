@@ -3,7 +3,7 @@ export interface ErrorReport {
   stack?: string;
   source?: string;
   timestamp: string;
-  context?: Record<string, any>;
+  context?: Record<string, unknown>;
 }
 
 export interface ErrorReporterConfig {

@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
+import { logger } from '../logger.js';
 
 export class SessionManager {
   private sessionId: string | null = null;
@@ -23,10 +24,10 @@ export class SessionManager {
         const id = (await readFile(this.sessionFile, 'utf-8')).trim();
         if (id) {
           this.sessionId = id;
-          console.log(`[SessionManager] Loaded existing session: ${this.sessionId}`);
+          logger.debug('SessionManager', `Loaded existing session: ${this.sessionId}`);
         }
       } catch (error) {
-        console.error(`[SessionManager] Failed to load session file:`, error);
+        logger.error('SessionManager', 'Failed to load session file:', error);
       }
     }
   }
@@ -34,7 +35,7 @@ export class SessionManager {
   async saveSessionId(id: string): Promise<void> {
     this.sessionId = id;
     await writeFile(this.sessionFile, id, 'utf-8');
-    console.log(`[SessionManager] Saved session: ${id}`);
+    logger.debug('SessionManager', `Saved session: ${id}`);
   }
 
   getSessionId(): string | null {
@@ -48,8 +49,8 @@ export class SessionManager {
         await writeFile(this.sessionFile, '', 'utf-8');
       }
     } catch (error) {
-      console.error(`[SessionManager] Failed to reset session:`, error);
+      logger.error('SessionManager', 'Failed to reset session:', error);
     }
-    console.log(`[SessionManager] Session reset`);
+    logger.debug('SessionManager', 'Session reset');
   }
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"runtime"
 	"strings"
@@ -24,9 +25,9 @@ type Reporter struct {
 type Option func(*Reporter)
 
 // WithRelayURL sets the relay server URL.
-func WithRelayURL(url string) Option {
+func WithRelayURL(u string) Option {
 	return func(r *Reporter) {
-		r.RelayURL = url
+		r.RelayURL = u
 	}
 }
 
@@ -121,10 +122,13 @@ func (r *Reporter) send(report errorReport) error {
 		return fmt.Errorf("devsonar: marshal error: %w", err)
 	}
 
-	url := strings.TrimRight(r.RelayURL, "/") + "/errors"
+	u, err := url.JoinPath(r.RelayURL, "errors")
+	if err != nil {
+		return fmt.Errorf("devsonar: invalid relay URL: %w", err)
+	}
 	client := &http.Client{Timeout: r.Timeout}
 
-	resp, err := client.Post(url, "application/json", bytes.NewReader(data))
+	resp, err := client.Post(u, "application/json", bytes.NewReader(data))
 	if err != nil {
 		if r.Debug {
 			fmt.Fprintf(os.Stderr, "[DevSonar] Failed to send error report: %v\n", err)
@@ -132,6 +136,12 @@ func (r *Reporter) send(report errorReport) error {
 		return err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		if r.Debug {
+			fmt.Fprintf(os.Stderr, "[DevSonar] Relay returned status %d\n", resp.StatusCode)
+		}
+	}
 
 	return nil
 }

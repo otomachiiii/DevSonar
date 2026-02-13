@@ -67,8 +67,8 @@ export class ErrorReporter {
     }
   }
 
-  private isErrorReport(obj: any): obj is ErrorReport {
-    return obj && typeof obj === 'object' && 'message' in obj && 'timestamp' in obj;
+  private isErrorReport(obj: unknown): obj is ErrorReport {
+    return obj !== null && typeof obj === 'object' && 'message' in obj && 'timestamp' in obj;
   }
 }
 

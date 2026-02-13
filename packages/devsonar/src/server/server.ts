@@ -7,6 +7,7 @@ import { ErrorReport, RelayConfig, HealthResponse } from './types.js';
 import { ErrorBuffer } from './buffer.js';
 import { AIClient } from './ai-client.js';
 import { SessionManager } from './session-manager.js';
+import { logger } from '../logger.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
@@ -19,12 +20,12 @@ export function createServer(config: RelayConfig, sessionManager: SessionManager
   const aiClient = new AIClient(config, sessionManager);
   const errorBuffer = new ErrorBuffer(
     async (errors) => {
-      console.log(`[DevSonar] Flushing ${errors.length} error(s) to AI agent...`);
+      logger.debug('DevSonar', `Flushing ${errors.length} error(s) to AI agent...`);
       try {
         await aiClient.send(errors);
-        console.log(`[DevSonar] Successfully sent errors to AI agent`);
+        logger.info('DevSonar', 'Successfully sent errors to AI agent');
       } catch (error) {
-        console.error(`[DevSonar] Failed to send errors to AI agent:`, error);
+        logger.error('DevSonar', 'Failed to send errors to AI agent:', error);
       }
     },
     config.debounceMs,
@@ -37,20 +38,21 @@ export function createServer(config: RelayConfig, sessionManager: SessionManager
       const errors: ErrorReport[] = Array.isArray(body) ? body : [body];
 
       errors.forEach((error) => {
-        if (!error.message || !error.timestamp) {
-          console.warn('[DevSonar] Invalid error report received:', error);
+        if (!error.message || typeof error.message !== 'string' ||
+            !error.timestamp || typeof error.timestamp !== 'string') {
+          logger.warn('DevSonar', `Invalid error report received: ${JSON.stringify(error)}`);
           return;
         }
         if (!error.stack) {
-          console.warn(`[DevSonar] Warning: Error report missing stack trace - "${error.message}"`);
+          logger.warn('DevSonar', `Warning: Error report missing stack trace - "${error.message}"`);
         }
-        console.log(`[DevSonar] Received error: ${error.message} (source: ${error.source || 'unknown'})`);
+        logger.debug('DevSonar', `Received error: ${error.message} (source: ${error.source || 'unknown'})`);
         errorBuffer.add(error);
       });
 
       res.status(202).json({ received: errors.length });
     } catch (error) {
-      console.error('[DevSonar] Error processing request:', error);
+      logger.error('DevSonar', 'Error processing request:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -74,7 +76,7 @@ export function createServer(config: RelayConfig, sessionManager: SessionManager
   const dashboardDir = resolve(__dirname, '..', '..', 'dashboard');
   if (existsSync(dashboardDir)) {
     app.use('/', express.static(dashboardDir));
-    console.log(`[DevSonar] Dashboard enabled: serving from ${dashboardDir}`);
+    logger.debug('DevSonar', `Dashboard enabled: serving from ${dashboardDir}`);
   }
 
   return app;

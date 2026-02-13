@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import traceback
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from urllib.error import URLError
 from urllib.request import Request, urlopen
+
+logger = logging.getLogger("devsonar")
 
 
 class ErrorReporter:
@@ -68,4 +71,4 @@ class ErrorReporter:
             urlopen(req, timeout=self.timeout)
         except (URLError, OSError) as e:
             if self.debug:
-                print(f"[DevSonar] Failed to send error report: {e}")
+                logger.debug("Failed to send error report: %s", e)

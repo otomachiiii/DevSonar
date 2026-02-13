@@ -1,4 +1,5 @@
 import { ErrorReport, InFlightEntry } from './types.js';
+import { logger } from '../logger.js';
 
 export class ErrorBuffer {
   private buffer: ErrorReport[] = [];
@@ -22,7 +23,7 @@ export class ErrorBuffer {
     const existing = this.inFlight.get(error.message);
     if (existing) {
       existing.skippedCount++;
-      console.log(`[ErrorBuffer] Skipping duplicate (in-flight): "${error.message}" (skipped: ${existing.skippedCount})`);
+      logger.debug('ErrorBuffer', `Skipping duplicate (in-flight): "${error.message}" (skipped: ${existing.skippedCount})`);
       return;
     }
 
@@ -65,17 +66,17 @@ export class ErrorBuffer {
         status: 'processing',
       });
     }
-    console.log(`[ErrorBuffer] In-flight registered: ${errors.length} error(s) | total in-flight: ${this.inFlight.size}`);
+    logger.debug('ErrorBuffer', `In-flight registered: ${errors.length} error(s) | total in-flight: ${this.inFlight.size}`);
 
     this.flushCallback(errors).finally(() => {
       for (const e of errors) {
         const entry = this.inFlight.get(e.message);
         if (entry) {
-          console.log(`[ErrorBuffer] Completed: "${e.message}" (skipped ${entry.skippedCount} duplicates during processing)`);
+          logger.debug('ErrorBuffer', `Completed: "${e.message}" (skipped ${entry.skippedCount} duplicates during processing)`);
           this.inFlight.delete(e.message);
         }
       }
-      console.log(`[ErrorBuffer] Ready for next request | remaining in-flight: ${this.inFlight.size}`);
+      logger.debug('ErrorBuffer', `Ready for next request | remaining in-flight: ${this.inFlight.size}`);
     });
   }
 

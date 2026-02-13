@@ -1,6 +1,7 @@
 import * as http from 'node:http';
 import type { LanguageParser, ParsedError } from './types.js';
 import { allParsers } from './parsers/index.js';
+import { logger } from '../logger.js';
 
 const IDLE_THRESHOLD = 2;
 const MAX_TRACE_LINES = 200;
@@ -53,13 +54,13 @@ export class StderrParser {
           return;
         }
       }
-    } else {
+    } else if (this.activeParser) {
       if (this.accumulatedLines.length >= MAX_TRACE_LINES) {
         this.emitError();
         return;
       }
 
-      if (this.activeParser!.isContinuation(line, this.accumulatedLines)) {
+      if (this.activeParser.isContinuation(line, this.accumulatedLines)) {
         this.accumulatedLines.push(line);
         this.idleCount = 0;
       } else {
@@ -122,7 +123,9 @@ export class StderrParser {
     };
 
     const req = http.request(options);
-    req.on('error', () => {}); // Fail silently
+    req.on('error', (err) => {
+      logger.debug('StderrParser', `Failed to send to relay: ${err.message}`);
+    });
     req.write(payload);
     req.end();
   }
