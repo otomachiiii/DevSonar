@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "devsonar"
-version = "0.1.0"
+version = "0.1.3"
 description = "DevSonar error reporter for Python - captures runtime errors and sends to DevSonar relay"
 license = "MIT"
 requires-python = ">=3.8"
